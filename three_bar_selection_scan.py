@@ -63,6 +63,8 @@ CANDIDATE_COLUMNS = [
     "rest_lowest_close_vs_invalid_pct",
 ]
 
+UPPER_SHADOW_LIMIT = 0.022
+
 
 def normalize_date_str(value: str) -> str:
     digits = "".join(ch for ch in str(value).strip() if ch.isdigit())
@@ -188,7 +190,7 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
                 long_ma_order_ok,
                 pd.notna(high_30_prev) and high_30_prev > 0 and close >= high_30_prev,
                 pd.notna(vol_ma20) and vol_ma20 > 0 and volume >= vol_ma20,
-                pd.notna(upper_shadow_pct) and upper_shadow_pct <= 0.015,
+                pd.notna(upper_shadow_pct) and upper_shadow_pct <= UPPER_SHADOW_LIMIT,
                 pd.notna(bar_range) and bar_range > 0,
             ]
             if not all(ignite_checks):
@@ -208,7 +210,7 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
                 rest_max_range_ratio = pullback["bar_range_abs"].max() / bar_range if bar_range and not pd.isna(bar_range) else pd.NA
 
                 rest_checks = [
-                    bool((pb_shadow <= 0.015).all()),
+                    bool((pb_shadow <= UPPER_SHADOW_LIMIT).all()),
                     pd.notna(rest_avg_vol_ratio) and float(rest_avg_vol_ratio) < 1.0,
                     pd.notna(rest_max_range_ratio) and float(rest_max_range_ratio) < 0.70,
                     bool((pullback["close"] >= invalid_price).all()),

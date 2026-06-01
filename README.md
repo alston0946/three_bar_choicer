@@ -9,6 +9,7 @@
 - 生成当日 `three_bar_selection_candidates.csv`
 - 发送“正文摘要 + CSV 附件”到指定邮箱
 - 支持本地用现有 prepared CSV 做回归验证
+- 当前选股口径中，启动 bar 和整理 bar 的上影线限制统一为 `2.2%`
 
 ## 目录说明
 
