@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import argparse
+import json
 import os
 import smtplib
 from email.header import Header
@@ -11,6 +13,13 @@ from pathlib import Path
 
 SMTP_HOST = "smtp.qq.com"
 SMTP_PORT = 465
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Send the daily 3-bar selection summary email.")
+    parser.add_argument("--summary-json", required=True, help="Path to mail_summary.json.")
+    parser.add_argument("--attachments", nargs="*", default=[], help="Attachment file paths.")
+    return parser.parse_args()
 
 
 def build_summary_body(summary: dict) -> str:
@@ -50,6 +59,28 @@ def build_summary_body(summary: dict) -> str:
     return "\n".join(lines)
 
 
+def build_email_subject(summary: dict) -> str:
+    prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "").strip()
+    subject = f"3bar每日选股 {summary['effective_trade_date']} 候选{summary['candidate_count']}只"
+    return f"{prefix} {subject}".strip() if prefix else subject
+
+
+def mask_email_address(email: str) -> str:
+    email = str(email).strip()
+    if "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local[:1] + "***"
+    else:
+        masked_local = local[:2] + "***" + local[-1:]
+    return f"{masked_local}@{domain}"
+
+
+def load_summary(summary_json: Path) -> dict:
+    return json.loads(summary_json.read_text(encoding="utf-8"))
+
+
 def send_email(subject: str, body: str, attachments: list[Path]) -> None:
     sender = os.getenv("QQ_SMTP_SENDER", "").strip()
     auth_code = os.getenv("QQ_SMTP_AUTH_CODE", "").strip()
@@ -65,6 +96,19 @@ def send_email(subject: str, body: str, attachments: list[Path]) -> None:
     if not receivers:
         raise RuntimeError("EMAIL_TO is empty after parsing")
 
+    missing_attachments = [str(path) for path in attachments if not path.exists()]
+    if missing_attachments:
+        raise FileNotFoundError(f"attachment file missing: {missing_attachments}")
+
+    print(f"email_subject={subject}")
+    print(f"email_sender={mask_email_address(sender)}")
+    print(f"email_receivers={','.join(mask_email_address(item) for item in receivers)}")
+    print(f"email_attachment_count={len(attachments)}")
+    if attachments:
+        print(f"email_attachments={','.join(path.name for path in attachments)}")
+    print(f"email_smtp_host={SMTP_HOST}")
+    print(f"email_send_start=True")
+
     msg = MIMEMultipart()
     msg["From"] = sender
     msg["To"] = ", ".join(receivers)
@@ -77,6 +121,22 @@ def send_email(subject: str, body: str, attachments: list[Path]) -> None:
         part["Content-Disposition"] = f'attachment; filename="{attachment.name}"'
         msg.attach(part)
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
         server.login(sender, auth_code)
+        print("email_login_success=True")
         server.sendmail(sender, receivers, msg.as_string())
+        print("email_send_success=True")
+
+
+def main() -> None:
+    args = parse_args()
+    summary_path = Path(args.summary_json)
+    attachments = [Path(item) for item in args.attachments]
+    summary = load_summary(summary_path)
+    body = build_summary_body(summary)
+    subject = build_email_subject(summary)
+    send_email(subject=subject, body=body, attachments=attachments)
+
+
+if __name__ == "__main__":
+    main()

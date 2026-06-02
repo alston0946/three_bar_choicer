@@ -8,6 +8,7 @@
 - 运行时通过 `Tushare` 拉取最新数据，不提交大体积原始 CSV
 - 生成当日 `three_bar_selection_candidates.csv`
 - 发送“正文摘要 + CSV 附件”到指定邮箱
+- 邮件发送独立为单独的 GitHub Actions 步骤，日志里会明确打印发送开始/成功状态
 - 支持本地用现有 prepared CSV 做回归验证
 - 当前选股口径中，启动 bar 和整理 bar 的上影线限制统一为 `2.2%`
 
@@ -63,6 +64,18 @@ python run_daily_selection.py ^
 python run_daily_selection.py --run-date 20260530 --output-dir artifacts --send-email
 ```
 
+如果要保留 `prepared_daily_data.csv` 方便调试：
+
+```bash
+python run_daily_selection.py --run-date 20260530 --output-dir artifacts --keep-prepared-data
+```
+
+如果你已经生成了 `mail_summary.json`，也可以单独发送邮件：
+
+```bash
+python send_email.py --summary-json artifacts/mail_summary.json --attachments artifacts/three_bar_selection_candidates.csv
+```
+
 ## GitHub Secrets
 
 在目标仓库的 `Settings -> Secrets and variables -> Actions` 中新增：
@@ -83,12 +96,25 @@ python run_daily_selection.py --run-date 20260530 --output-dir artifacts --send-
 
 - 每周一到周五 `17:00`
 
+注意：
+
+- GitHub Actions 的 `schedule` 是 best effort，不保证一定在 `17:00:00` 准点触发
+- 如果你希望“尽量在 17 点前收到”，可以把 cron 再提前一些
+
 ## 输出文件
 
 默认输出目录为 `artifacts/`，包含：
 
+- `three_bar_selection_candidates.csv`
+- `mail_summary.json`
+
+可选输出：
+
 - `prepared_daily_data.csv`
-  - 仅在 `Tushare` 模式下生成
+  - 仅在 `Tushare` 模式下且传入 `--keep-prepared-data` 时生成
+
+GitHub Actions 默认只上传：
+
 - `three_bar_selection_candidates.csv`
 - `mail_summary.json`
 
@@ -96,4 +122,4 @@ python run_daily_selection.py --run-date 20260530 --output-dir artifacts --send-
 
 - `industry_above_ma20` 口径为 `sw_l1_close >= sw_l1_ma20`
 - 如果行业分类或行业指数当天获取失败，主选股仍会继续运行，只是行业相关字段为空
-- 这个目录目前只是本地实现骨架；当前机器未发现可用 `git`，所以仓库初始化、提交和推送需要在你装好 `git` 的环境里完成
+- 当前工作流增加了 `concurrency` 配置，避免这个仓库自己的手动触发和定时触发相互重叠

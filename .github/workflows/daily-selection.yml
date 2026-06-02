@@ -5,9 +5,14 @@ on:
   schedule:
     - cron: "0 9 * * 1-5"
 
+concurrency:
+  group: daily-selection
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     env:
       TZ: Asia/Shanghai
       PYTHONUTF8: "1"
@@ -31,12 +36,21 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run daily selection
-        run: python run_daily_selection.py --output-dir artifacts --send-email
+        run: python run_daily_selection.py --output-dir artifacts
+
+      - name: Send summary email
+        run: |
+          python send_email.py \
+            --summary-json artifacts/mail_summary.json \
+            --attachments artifacts/three_bar_selection_candidates.csv
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: three-bar-daily-selection
-          path: artifacts/
+          path: |
+            artifacts/three_bar_selection_candidates.csv
+            artifacts/mail_summary.json
           if-no-files-found: warn
+          retention-days: 7
