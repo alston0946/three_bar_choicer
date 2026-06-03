@@ -155,22 +155,36 @@ def fetch_stock_basic(pro) -> pd.DataFrame:
 
 def fetch_all_stock_daily(pro, trade_dates: list[str]) -> pd.DataFrame:
     frames = []
+    last_trade_date = trade_dates[-1] if trade_dates else None
     for trade_date in trade_dates:
-        df = fetch_with_retry(
-            lambda td=trade_date: pro.daily(trade_date=td),
-            f"empty daily dataframe for {trade_date}",
-        )
+        try:
+            df = fetch_with_retry(
+                lambda td=trade_date: pro.daily(trade_date=td),
+                f"empty daily dataframe for {trade_date}",
+            )
+        except Exception as exc:
+            if trade_date == last_trade_date:
+                warnings.warn(f"skip latest daily trade_date {trade_date}: {exc}")
+                continue
+            raise
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def fetch_all_stock_adj_factor(pro, trade_dates: list[str]) -> pd.DataFrame:
     frames = []
+    last_trade_date = trade_dates[-1] if trade_dates else None
     for trade_date in trade_dates:
-        df = fetch_with_retry(
-            lambda td=trade_date: pro.adj_factor(trade_date=td),
-            f"empty adj_factor dataframe for {trade_date}",
-        )
+        try:
+            df = fetch_with_retry(
+                lambda td=trade_date: pro.adj_factor(trade_date=td),
+                f"empty adj_factor dataframe for {trade_date}",
+            )
+        except Exception as exc:
+            if trade_date == last_trade_date:
+                warnings.warn(f"skip latest adj_factor trade_date {trade_date}: {exc}")
+                continue
+            raise
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -424,13 +438,26 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
     if not trade_dates:
         raise RuntimeError("no trade dates fetched from Tushare")
 
-    effective_trade_date = max(date for date in trade_dates if date <= run_date)
-
     stock_basic = fetch_stock_basic(pro)
     raw_daily = fetch_all_stock_daily(pro, trade_dates)
     raw_adj = fetch_all_stock_adj_factor(pro, trade_dates)
     daily = standardize_tushare_daily(raw_daily)
     adj = standardize_tushare_adj_factor(raw_adj)
+    if daily.empty:
+        raise RuntimeError("no stock daily rows fetched from Tushare")
+    if adj.empty:
+        raise RuntimeError("no adj_factor rows fetched from Tushare")
+
+    available_daily_dates = set(daily["trade_date"].astype(str))
+    available_adj_dates = set(adj["trade_date"].astype(str))
+    common_available_dates = sorted(date for date in (available_daily_dates & available_adj_dates) if date <= run_date)
+    if not common_available_dates:
+        raise RuntimeError(f"no available trade_date <= {run_date} found in fetched Tushare data")
+
+    effective_trade_date = common_available_dates[-1]
+    daily = daily[daily["trade_date"].astype(str) <= effective_trade_date].copy()
+    adj = adj[adj["trade_date"].astype(str) <= effective_trade_date].copy()
+
     price = apply_qfq_adjustment(daily, adj)
     prepared = build_indicators(price)
     prepared = prepared.merge(stock_basic, on="ts_code", how="inner")
@@ -468,6 +495,7 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
     return {
         "requested_run_date": run_date,
         "effective_trade_date": effective_trade_date,
+        "calendar_last_trade_date": max(date for date in trade_dates if date <= run_date),
         "start_date": start_date,
         "row_count": int(len(prepared)),
         "output_file": str(output_path),
