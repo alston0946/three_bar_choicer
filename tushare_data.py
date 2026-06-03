@@ -251,7 +251,7 @@ def standardize_tushare_adj_factor(df: pd.DataFrame) -> pd.DataFrame:
     out["adj_factor"] = pd.to_numeric(out["adj_factor"], errors="coerce")
     out = out.dropna(subset=["ts_code", "date", "adj_factor"]).copy()
     out = out.sort_values(["ts_code", "date"]).drop_duplicates(["ts_code", "date"], keep="last").reset_index(drop=True)
-    return out[["ts_code", "date", "adj_factor"]]
+    return out[["ts_code", "trade_date", "date", "adj_factor"]]
 
 
 def apply_qfq_adjustment(daily_df: pd.DataFrame, adj_df: pd.DataFrame) -> pd.DataFrame:
