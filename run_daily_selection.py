@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import traceback
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -63,6 +64,21 @@ def build_mail_summary(
     }
 
 
+def build_failure_summary(requested_run_date: str, exc: Exception) -> dict:
+    return {
+        "requested_run_date": requested_run_date,
+        "effective_trade_date": "",
+        "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
+        "candidate_count": 0,
+        "industry_above_ma20_counts": {},
+        "output_file": "",
+        "top_candidates": [],
+        "status": "failed",
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+    }
+
+
 def main() -> None:
     args = parse_args()
     requested_run_date = normalize_date_str(args.run_date)
@@ -72,6 +88,7 @@ def main() -> None:
     prepared_file = output_dir / "prepared_daily_data.csv"
     candidates_file = output_dir / "three_bar_selection_candidates.csv"
     summary_file = output_dir / "mail_summary.json"
+    traceback_file = output_dir / "error_traceback.txt"
     temp_prepared_dir: TemporaryDirectory | None = None
 
     try:
@@ -137,6 +154,16 @@ def main() -> None:
             subject = build_email_subject(summary)
             send_email(subject=subject, body=body, attachments=[candidates_file])
             print("email_sent=True")
+    except Exception as exc:
+        failure_summary = build_failure_summary(requested_run_date, exc)
+        summary_file.write_text(json.dumps(failure_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        traceback_text = traceback.format_exc()
+        traceback_file.write_text(traceback_text, encoding="utf-8")
+        print("run_status=failed")
+        print(f"error_type={type(exc).__name__}")
+        print(f"error_message={exc}")
+        print("traceback_file=", traceback_file.resolve())
+        raise
     finally:
         if temp_prepared_dir is not None:
             temp_prepared_dir.cleanup()

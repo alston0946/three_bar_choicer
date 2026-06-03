@@ -52,5 +52,6 @@ jobs:
           path: |
             artifacts/three_bar_selection_candidates.csv
             artifacts/mail_summary.json
+            artifacts/error_traceback.txt
           if-no-files-found: warn
           retention-days: 7
