@@ -121,6 +121,10 @@ def main() -> None:
         print("effective_trade_date=", effective_trade_date)
         if "calendar_last_trade_date" in prepare_meta:
             print("calendar_last_trade_date=", prepare_meta["calendar_last_trade_date"])
+        if "data_last_trade_date" in prepare_meta:
+            print("data_last_trade_date=", prepare_meta["data_last_trade_date"])
+        if "skipped_same_day_fetch" in prepare_meta:
+            print("skipped_same_day_fetch=", prepare_meta["skipped_same_day_fetch"])
         print("candidate_count=", len(candidates))
         print("prepared_data_persisted=", prepare_meta.get("output_persisted"))
         if args.keep_prepared_data:

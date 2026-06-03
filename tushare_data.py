@@ -64,10 +64,15 @@ REQUIRED_PREPARED_COLUMNS = [
 
 SW_MEMBER_SLEEP_SEC = 0.10
 SW_DAILY_SLEEP_SEC = 0.10
+DEFAULT_EOD_READY_HOUR = 19
 
 
 def today_in_shanghai() -> str:
     return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+
+
+def now_in_shanghai() -> datetime:
+    return datetime.now(ZoneInfo("Asia/Shanghai"))
 
 
 def normalize_date_str(value: str | None) -> str:
@@ -84,6 +89,18 @@ def normalize_date_str(value: str | None) -> str:
     except ValueError as exc:
         raise ValueError(f"invalid natural date: {value}") from exc
     return digits
+
+
+def should_skip_same_day_fetch(run_date: str, candidate_trade_dates: list[str], eod_ready_hour: int = DEFAULT_EOD_READY_HOUR) -> bool:
+    if not candidate_trade_dates:
+        return False
+    now = now_in_shanghai()
+    today = now.strftime("%Y%m%d")
+    if run_date != today:
+        return False
+    if candidate_trade_dates[-1] != today:
+        return False
+    return now.hour < eod_ready_hour
 
 
 def parse_trade_date_series(series: pd.Series) -> pd.Series:
@@ -437,10 +454,21 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
     trade_dates = fetch_trade_dates(pro, start_date, run_date)
     if not trade_dates:
         raise RuntimeError("no trade dates fetched from Tushare")
+    calendar_trade_dates = [date for date in trade_dates if date <= run_date]
+    if not calendar_trade_dates:
+        raise RuntimeError(f"no trade dates <= {run_date} fetched from Tushare")
+
+    skipped_same_day_fetch = False
+    data_trade_dates = calendar_trade_dates
+    if should_skip_same_day_fetch(run_date, calendar_trade_dates):
+        if len(calendar_trade_dates) < 2:
+            raise RuntimeError(f"cannot skip same-day fetch for {run_date}: no previous trade date available")
+        data_trade_dates = calendar_trade_dates[:-1]
+        skipped_same_day_fetch = True
 
     stock_basic = fetch_stock_basic(pro)
-    raw_daily = fetch_all_stock_daily(pro, trade_dates)
-    raw_adj = fetch_all_stock_adj_factor(pro, trade_dates)
+    raw_daily = fetch_all_stock_daily(pro, data_trade_dates)
+    raw_adj = fetch_all_stock_adj_factor(pro, data_trade_dates)
     daily = standardize_tushare_daily(raw_daily)
     adj = standardize_tushare_adj_factor(raw_adj)
     if daily.empty:
@@ -495,7 +523,9 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
     return {
         "requested_run_date": run_date,
         "effective_trade_date": effective_trade_date,
-        "calendar_last_trade_date": max(date for date in trade_dates if date <= run_date),
+        "calendar_last_trade_date": calendar_trade_dates[-1],
+        "data_last_trade_date": data_trade_dates[-1],
+        "skipped_same_day_fetch": skipped_same_day_fetch,
         "start_date": start_date,
         "row_count": int(len(prepared)),
         "output_file": str(output_path),
