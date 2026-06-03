@@ -465,8 +465,13 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
             raise RuntimeError(f"cannot skip same-day fetch for {run_date}: no previous trade date available")
         data_trade_dates = calendar_trade_dates[:-1]
         skipped_same_day_fetch = True
+    data_end_date = data_trade_dates[-1]
 
     stock_basic = fetch_stock_basic(pro)
+    print(f"prepare_start_date={start_date}")
+    print(f"prepare_requested_run_date={run_date}")
+    print(f"prepare_data_end_date={data_end_date}")
+    print(f"prepare_skipped_same_day_fetch={skipped_same_day_fetch}")
     raw_daily = fetch_all_stock_daily(pro, data_trade_dates)
     raw_adj = fetch_all_stock_adj_factor(pro, data_trade_dates)
     daily = standardize_tushare_daily(raw_daily)
@@ -490,13 +495,20 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
     prepared = build_indicators(price)
     prepared = prepared.merge(stock_basic, on="ts_code", how="inner")
 
-    market = fetch_market_index_data(pro, start_date, run_date)
-    prepared = prepared.merge(market, on=["trade_date", "date"], how="left")
+    try:
+        market = fetch_market_index_data(pro, start_date, data_end_date)
+        prepared = prepared.merge(market, on=["trade_date", "date"], how="left")
+    except Exception as exc:
+        warnings.warn(f"market index data fetch failed; continue with missing values: {exc}")
+        prepared["sh_index_close"] = pd.NA
+        prepared["sh_index_ma20"] = pd.NA
+        prepared["sz_index_close"] = pd.NA
+        prepared["sz_index_ma20"] = pd.NA
 
     try:
         sw_l1_classify = fetch_sw_l1_classify(pro)
         sw_l1_members = fetch_sw_l1_membership_map(pro, sw_l1_classify, effective_trade_date)
-        sw_l1_daily = fetch_sw_l1_daily(pro, sw_l1_classify, start_date, run_date)
+        sw_l1_daily = fetch_sw_l1_daily(pro, sw_l1_classify, start_date, data_end_date)
         prepared = prepared.merge(sw_l1_members, on="ts_code", how="left")
         prepared = prepared.merge(
             sw_l1_daily[["sw_l1_code", "trade_date", "sw_l1_close", "sw_l1_ma20"]],
@@ -524,7 +536,7 @@ def build_prepared_daily_dataset(run_date: str, output_path: Path, lookback_days
         "requested_run_date": run_date,
         "effective_trade_date": effective_trade_date,
         "calendar_last_trade_date": calendar_trade_dates[-1],
-        "data_last_trade_date": data_trade_dates[-1],
+        "data_last_trade_date": data_end_date,
         "skipped_same_day_fetch": skipped_same_day_fetch,
         "start_date": start_date,
         "row_count": int(len(prepared)),
