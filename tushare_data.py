@@ -172,7 +172,7 @@ def fetch_stock_basic(pro) -> pd.DataFrame:
 
 def fetch_all_stock_daily(pro, trade_dates: list[str]) -> pd.DataFrame:
     frames = []
-    last_trade_date = trade_dates[-1] if trade_dates else None
+    failed_dates = []
     for trade_date in trade_dates:
         try:
             df = fetch_with_retry(
@@ -180,17 +180,19 @@ def fetch_all_stock_daily(pro, trade_dates: list[str]) -> pd.DataFrame:
                 f"empty daily dataframe for {trade_date}",
             )
         except Exception as exc:
-            if trade_date == last_trade_date:
-                warnings.warn(f"skip latest daily trade_date {trade_date}: {exc}")
-                continue
-            raise
+            failed_dates.append(trade_date)
+            warnings.warn(f"skip daily trade_date {trade_date}: {exc}")
+            continue
+        print(f"daily_trade_date_ok={trade_date} rows={len(df)}")
         frames.append(df)
+    if failed_dates:
+        warnings.warn(f"daily fetch skipped {len(failed_dates)} trade dates: {failed_dates[:10]}")
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def fetch_all_stock_adj_factor(pro, trade_dates: list[str]) -> pd.DataFrame:
     frames = []
-    last_trade_date = trade_dates[-1] if trade_dates else None
+    failed_dates = []
     for trade_date in trade_dates:
         try:
             df = fetch_with_retry(
@@ -198,11 +200,13 @@ def fetch_all_stock_adj_factor(pro, trade_dates: list[str]) -> pd.DataFrame:
                 f"empty adj_factor dataframe for {trade_date}",
             )
         except Exception as exc:
-            if trade_date == last_trade_date:
-                warnings.warn(f"skip latest adj_factor trade_date {trade_date}: {exc}")
-                continue
-            raise
+            failed_dates.append(trade_date)
+            warnings.warn(f"skip adj_factor trade_date {trade_date}: {exc}")
+            continue
+        print(f"adj_trade_date_ok={trade_date} rows={len(df)}")
         frames.append(df)
+    if failed_dates:
+        warnings.warn(f"adj_factor fetch skipped {len(failed_dates)} trade dates: {failed_dates[:10]}")
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
