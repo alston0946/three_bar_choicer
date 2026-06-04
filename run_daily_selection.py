@@ -17,7 +17,14 @@ from tushare_data import build_prepared_daily_dataset, determine_effective_trade
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run daily 3-bar selection and optionally send QQ email.")
-    parser.add_argument("--run-date", help="Requested run date in YYYYMMDD. Defaults to today in Asia/Shanghai.")
+    parser.add_argument(
+        "--run-date",
+        help="Requested run date in YYYYMMDD. Defaults to latest available trade date when omitted.",
+    )
+    parser.add_argument(
+        "--target-day",
+        help="Alias of --run-date for local manual backfill/debug runs.",
+    )
     parser.add_argument("--output-dir", default="artifacts", help="Output directory.")
     parser.add_argument("--local-input-csv", help="Use an existing prepared CSV instead of pulling from Tushare.")
     parser.add_argument("--lookback-days", type=int, default=520, help="Calendar lookback days for Tushare fetch.")
@@ -28,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--send-email", action="store_true", help="Send email after files are generated.")
     return parser.parse_args()
+
+
+def resolve_requested_run_date(args: argparse.Namespace) -> str:
+    if args.run_date and args.target_day:
+        raise ValueError("use only one of --run-date or --target-day")
+    return normalize_date_str(args.target_day or args.run_date)
 
 
 def top_candidates_for_summary(df: pd.DataFrame, limit: int = 20) -> list[dict]:
@@ -81,7 +94,7 @@ def build_failure_summary(requested_run_date: str, exc: Exception) -> dict:
 
 def main() -> None:
     args = parse_args()
-    requested_run_date = normalize_date_str(args.run_date)
+    requested_run_date = resolve_requested_run_date(args)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
