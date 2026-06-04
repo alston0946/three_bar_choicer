@@ -261,6 +261,11 @@ def apply_qfq_adjustment(daily_df: pd.DataFrame, adj_df: pd.DataFrame) -> pd.Dat
         raise ValueError("adj_factor is empty")
 
     out = daily_df.merge(adj_df, on=["ts_code", "date"], how="left")
+    if "trade_date_x" in out.columns:
+        # Keep the trade date from daily data and drop the duplicate from adj_factor data.
+        out["trade_date"] = out["trade_date_x"]
+        drop_cols = [col for col in ["trade_date_x", "trade_date_y"] if col in out.columns]
+        out = out.drop(columns=drop_cols)
     out = out.sort_values(["ts_code", "date"]).reset_index(drop=True)
     out["adj_factor"] = out.groupby("ts_code", sort=False)["adj_factor"].ffill().bfill()
 
