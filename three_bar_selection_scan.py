@@ -73,6 +73,13 @@ def normalize_date_str(value: str) -> str:
     return digits
 
 
+def upper_shadow_pct(high: float, open_price: float, close_price: float):
+    top_price = max(open_price, close_price)
+    if pd.isna(high) or pd.isna(top_price) or top_price == 0:
+        return pd.NA
+    return (high - top_price) / top_price
+
+
 def is_20cm(ts_code: str) -> bool:
     code = str(ts_code).split(".")[0]
     return code.startswith(("300", "301", "688"))
@@ -168,7 +175,7 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
             if pd.isna(opn) or opn == 0 or pd.isna(high) or pd.isna(close):
                 continue
 
-            upper_shadow_pct = (high - max(opn, close)) / opn
+            upper_shadow_pct_value = upper_shadow_pct(high, opn, close)
             near_high_ratio = close / high_30_prev if pd.notna(high_30_prev) and high_30_prev > 0 else pd.NA
             lm_status = long_ma_status(ma60, ma250)
 
@@ -190,7 +197,7 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
                 long_ma_order_ok,
                 pd.notna(high_30_prev) and high_30_prev > 0 and close >= high_30_prev,
                 pd.notna(vol_ma20) and vol_ma20 > 0 and volume >= vol_ma20,
-                pd.notna(upper_shadow_pct) and upper_shadow_pct <= UPPER_SHADOW_LIMIT,
+                pd.notna(upper_shadow_pct_value) and upper_shadow_pct_value <= UPPER_SHADOW_LIMIT,
                 pd.notna(bar_range) and bar_range > 0,
             ]
             if not all(ignite_checks):
@@ -205,7 +212,8 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
                 if len(pullback) != rest_count:
                     continue
 
-                pb_shadow = (pullback["high"] - pullback[["open", "close"]].max(axis=1)) / pullback["open"]
+                pullback_top_price = pullback[["open", "close"]].max(axis=1)
+                pb_shadow = (pullback["high"] - pullback_top_price) / pullback_top_price
                 rest_avg_vol_ratio = pullback["volume"].mean() / volume if volume and not pd.isna(volume) else pd.NA
                 rest_max_range_ratio = pullback["bar_range_abs"].max() / bar_range if bar_range and not pd.isna(bar_range) else pd.NA
 
@@ -232,7 +240,7 @@ def scan_candidates(df: pd.DataFrame) -> pd.DataFrame:
                         "long_ma_status": lm_status,
                         "industry_above_ma20": industry_above_ma20(sw_l1_close, sw_l1_ma20),
                         "ignite_pct_chg_pct": round(float(pct_chg) * 100, 2),
-                        "ignite_upper_shadow_pct": round(float(upper_shadow_pct) * 100, 2),
+                        "ignite_upper_shadow_pct": round(float(upper_shadow_pct_value) * 100, 2),
                         "ignite_close_vs_30d_high_pct": round(float(near_high_ratio) * 100, 2),
                         "ignite_volume_vs_ma20": round(float(volume / vol_ma20), 2),
                         "ignite_high": round(float(high), 3),
